@@ -30,7 +30,7 @@ describe SeedDump do
 
     context 'with file option' do
       before do
-        @filename = Tempfile.new(File.join(Dir.tmpdir, 'foo'), nil)
+        @filename = Tempfile.new('foo', nil)
       end
 
       after do
@@ -39,6 +39,33 @@ describe SeedDump do
 
       it 'should dump the models to the specified file' do
         SeedDump.dump(Sample, file: @filename)
+
+        File.open(@filename) { |file| file.read.should eq(expected_output) }
+      end
+
+      context 'with append option' do
+        it 'should append to the file rather than overwriting it' do
+          SeedDump.dump(Sample, file: @filename)
+          SeedDump.dump(Sample, file: @filename, append: true)
+
+          File.open(@filename) { |file| file.read.should eq(expected_output + expected_output) }
+        end
+      end
+    end
+
+    context 'with migration option' do
+      before do
+        @filename = Tempfile.new(['add_seed_dump', '.rb'])
+      end
+
+      after do
+        File.unlink(@filename)
+      end
+
+      it 'should dump the models to the specified file' do
+        SeedDump.dump(Sample, file: @filename, migration: true)
+
+        expected_output = "class #{File.basename(@filename.path, File.extname(@filename.path)).classify} < ActiveRecord::Migration\n  def change\n      Sample.create!(    [\n          {string: \"string\", text: \"text\", integer: 42, float: 3.14, decimal: \"2.72\", datetime: \"1776-07-04 19:14:00\", time: \"2000-01-01 03:15:00\", date: \"1863-11-19\", binary: \"binary\", boolean: false},\n      {string: \"string\", text: \"text\", integer: 42, float: 3.14, decimal: \"2.72\", datetime: \"1776-07-04 19:14:00\", time: \"2000-01-01 03:15:00\", date: \"1863-11-19\", binary: \"binary\", boolean: false},\n      {string: \"string\", text: \"text\", integer: 42, float: 3.14, decimal: \"2.72\", datetime: \"1776-07-04 19:14:00\", time: \"2000-01-01 03:15:00\", date: \"1863-11-19\", binary: \"binary\", boolean: false}    \n    ])\n      end\n  end\n"
 
         File.open(@filename) { |file| file.read.should eq(expected_output) }
       end

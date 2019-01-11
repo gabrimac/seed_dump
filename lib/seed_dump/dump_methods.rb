@@ -1,3 +1,5 @@
+require 'indentation'
+
 class SeedDump
   module DumpMethods
     include Enumeration
@@ -7,13 +9,33 @@ class SeedDump
 
       io = open_io(options)
 
-      write_records_to_io(records, io, options)
+      if options[:migration] && options[:file]
+        write_migration_to_io(records, io, options)
+      else
+        write_records_to_io(records, io, options)
+      end
 
       ensure
         io.close if io.present?
     end
 
     private
+
+    def write_migration_to_io(records, io, options)
+      io.write("class #{File.basename(io.path, File.extname(io.path)).classify} < ActiveRecord::Migration\n")
+      io.write("def change\n".indent(2))
+      if options[:query]
+        io.write("if #{model_for(records)}.where(#{options[:query]}).empty?\n".indent(4))
+        options[:indentation] = 6
+        write_records_to_io(records, io, options)
+        io.write("end\n".indent(4))
+      else
+        options[:indentation] = 4
+        write_records_to_io(records, io, options)
+      end
+      io.write("end\n".indent(2))
+      io.write("end\n")
+    end
 
     def dump_record(record, options)
       attribute_strings = []
@@ -71,11 +93,12 @@ class SeedDump
       options[:exclude] ||= [:id, :created_at, :updated_at]
 
       method = options[:import] ? 'import' : 'create!'
-      io.write("#{model_for(records)}.#{method}(")
+
+      io_write(io, "#{model_for(records)}.#{method}(", options)
       if options[:import]
-        io.write("[#{attribute_names(records, options).map {|name| name.to_sym.inspect}.join(', ')}], ")
+        io_write(io, "[#{attribute_names(records, options).map {|name| name.to_sym.inspect}.join(', ')}], ", options)
       end
-      io.write("[\n  ")
+      io_write(io, "[\n  ", options)
 
       enumeration_method = if records.is_a?(ActiveRecord::Relation) || records.is_a?(Class)
                              :active_record_enumeration
@@ -84,18 +107,26 @@ class SeedDump
                            end
 
       send(enumeration_method, records, io, options) do |record_strings, last_batch|
-        io.write(record_strings.join(",\n  "))
+        io_write(io, record_strings.join(",\n  "), options)
 
-        io.write(",\n  ") unless last_batch
+        io_write(io, ",\n  ", options) unless last_batch
       end
 
-      io.write("\n]#{active_record_import_options(options)})\n")
+      io_write(io, "\n]#{active_record_import_options(options)})\n", options)
 
       if options[:file].present?
         nil
       else
         io.rewind
         io.read
+      end
+    end
+
+    def io_write(io, sentence, options)
+      if options[:indentation]
+        io.write(sentence.indent(options[:indentation]))
+      else
+        io.write(sentence)
       end
     end
 
